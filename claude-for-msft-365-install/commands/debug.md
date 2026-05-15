@@ -88,42 +88,34 @@ Admin Center → Integrated apps → your add-in → check the listed version.
 
 ### Force a client-side refresh
 
-Quit Excel/PowerPoint first, then:
-
 The `wef` cache holds **every** add-in side by side, each file named
 `<addin-id>.manifest-*.xml`. Don't wipe the folder — that kills unrelated
-add-ins (other sideloads, dev/staging variants). Delete only **your**
-add-in's ID, read straight from the manifest you deployed.
+add-ins (other sideloads, dev/staging variants). Use the helper scripts,
+which delete only the files matching **your** add-in's `<Id>`:
 
-**macOS:**
+- macOS: [`scripts/clear-addin-cache.sh`](../scripts/clear-addin-cache.sh)
+- Windows: [`scripts/clear-addin-cache.ps1`](../scripts/clear-addin-cache.ps1)
+
+Quit Excel/Word/PowerPoint first, then (macOS — PowerShell args are the
+same with `-Manifest`/`-Id`/`-Apply`):
+
 ```bash
-MANIFEST="$HOME/path/to/manifest.xml"   # the manifest you deployed
-ADDIN_ID="$(xmllint --xpath 'string(/*[local-name()="OfficeApp"]/*[local-name()="Id"])' "$MANIFEST" 2>/dev/null \
-  || grep -oE '<Id>[^<]+</Id>' "$MANIFEST" | head -1 | sed -E 's/<\/?Id>//g')"
-echo "Clearing cached manifests for add-in $ADDIN_ID"
-for app in Excel Word Powerpoint; do
-  dir="$HOME/Library/Containers/com.microsoft.$app/Data/Documents/wef"
-  [ -d "$dir" ] || continue
-  for f in "$dir/$ADDIN_ID".manifest*.xml "$dir/$ADDIN_ID".xml; do
-    [ -f "$f" ] && rm -f "$f" && echo "removed $f"
-  done
-done
+# 1. See what's cached — no deletion:
+./scripts/clear-addin-cache.sh
+
+# 2. Dry-run for your add-in (reads <Id> from the manifest you deployed):
+./scripts/clear-addin-cache.sh ~/path/to/manifest.xml
+#    …or by ID if you don't have the manifest handy:
+./scripts/clear-addin-cache.sh --id <GUID>
+
+# 3. Actually delete (only files prefixed with that add-in ID):
+./scripts/clear-addin-cache.sh ~/path/to/manifest.xml --apply
 ```
 
-This touches only files whose name starts with your add-in's `<Id>` —
-other add-ins in `wef` are left alone. (The cached files are named like
-`e3e0c7c8-….manifest-dev.xml`; the glob matches any suffix for that ID.)
-
-**Windows:** same idea — delete only the files prefixed with the add-in ID:
-```powershell
-$manifest = "C:\path\to\manifest.xml"
-$addinId  = ([xml](Get-Content $manifest)).OfficeApp.Id
-Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Office\16.0\Wef" -Recurse -Filter "$addinId*" `
-  -ErrorAction SilentlyContinue | Remove-Item -Force -Verbose
-```
-
-If you don't have the manifest handy, run `ls`/`dir` on the `wef` folder
-first, identify your add-in's ID from the filenames, and delete just those.
+Both scripts **dry-run by default** — nothing is removed without `--apply`
+(bash) / `-Apply` (PowerShell). No-args lists every add-in in `wef` so you
+can confirm the ID before touching anything. Other add-ins are never
+affected.
 
 Relaunch. If still stale, the service-side cache hasn't caught up. Wait, or
 use a fresh `<Id>` (below).
